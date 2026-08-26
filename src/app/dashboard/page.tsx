@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import {
@@ -14,86 +15,36 @@ import {
   Wrench,
 } from "lucide-react";
 import EquipmentStatusChart from "@/components/EquipmentStatusChart";
-import { listEquipment } from "../../features/equipment/actions";
+import {
+  getDashboardStats,
+  listEquipmentDueForCalibration,
+  listOpenServiceRequests,
+} from "../../features/equipment/queries";
 
-const stats = [
-  {
-    label: "Open requests",
-    value: 18,
-    Icon: FileText,
-    iconColor: "text-[#256dcc]",
-    iconBackground: "bg-blue-50",
-  },
-  {
-    label: "Due this week",
-    value: 7,
-    Icon: CalendarDays,
-    iconColor: "text-[#087b84]",
-    iconBackground: "bg-teal-50",
-  },
-  {
-    label: "Out of service",
-    value: 4,
-    Icon: Wrench,
-    iconColor: "text-[#dc3c36]",
-    iconBackground: "bg-rose-50",
-  },
-  {
-    label: "Maintenance due",
-    value: 12,
-    Icon: Bell,
-    iconColor: "text-[#c77800]",
-    iconBackground: "bg-amber-50",
-  },
-];
+function getRequestStatusClass(status: string) {
+  switch (status) {
+    case "ON_HOLD":
+      return "bg-rose-100 text-rose-700";
+    case "IN_REPAIR":
+      return "bg-amber-100 text-amber-800";
+    case "AWAITING_QA":
+      return "bg-violet-100 text-violet-700";
+    case "READY_TO_SHIP":
+      return "bg-emerald-100 text-emerald-800";
+    default:
+      return "bg-blue-100 text-blue-700";
+  }
+}
 
-const requests = [
-  {
-    id: "REQ-1047",
-    request: "Battery not holding charge",
-    equipment: "LIFEPAK 15",
-    unit: "Unit 1157",
-    priority: "High",
-    priorityClass: "bg-rose-100 text-rose-700",
-    due: "May 21, 2026",
-    dueHint: "Tomorrow",
-    tech: "DL",
-  },
-  {
-    id: "REQ-1043",
-    request: "Device self-test failure",
-    equipment: "AED Pro",
-    unit: "Unit 2381",
-    priority: "Medium",
-    priorityClass: "bg-amber-100 text-amber-800",
-    due: "May 22, 2026",
-    dueHint: "In 2 days",
-    tech: "AC",
-  },
-  {
-    id: "REQ-1041",
-    request: "Leads replacement",
-    equipment: "ProCare Monitor",
-    unit: "Unit 3090",
-    priority: "Medium",
-    priorityClass: "bg-amber-100 text-amber-800",
-    due: "May 23, 2026",
-    dueHint: "In 3 days",
-    tech: "SP",
-  },
-  {
-    id: "REQ-1038",
-    request: "Annual preventive maintenance",
-    equipment: "Infusion Pump",
-    unit: "Unit 4522",
-    priority: "Low",
-    priorityClass: "bg-emerald-100 text-emerald-800",
-    due: "May 24, 2026",
-    dueHint: "In 4 days",
-    tech: "AM",
-  },
-];
-
+function getInitials(name: string | null | undefined) {
+  return (
+    name
+      ?.split(" ")
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() ?? "—"
+  );
+}
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -101,9 +52,39 @@ export default async function DashboardPage() {
   if (!session?.user) {
     redirect("/");
   }
-const maintenanceItems = await listEquipment();
-
-
+  const maintenanceItems = await listEquipmentDueForCalibration(5);
+  const dashboardStats = await getDashboardStats();
+  const stats = [
+    {
+      label: "Open requests",
+      value: dashboardStats.openRequests,
+      Icon: FileText,
+      iconColor: "text-[#256dcc]",
+      iconBackground: "bg-blue-50",
+    },
+    {
+      label: "Due this week",
+      value: dashboardStats.dueThisWeek,
+      Icon: CalendarDays,
+      iconColor: "text-[#087b84]",
+      iconBackground: "bg-teal-50",
+    },
+    {
+      label: "Out of service",
+      value: dashboardStats.outOfService,
+      Icon: Wrench,
+      iconColor: "text-[#dc3c36]",
+      iconBackground: "bg-rose-50",
+    },
+    {
+      label: "Maintenance due",
+      value: dashboardStats.maintenanceDue,
+      Icon: Bell,
+      iconColor: "text-[#c77800]",
+      iconBackground: "bg-amber-50",
+    },
+  ];
+  const requests = await listOpenServiceRequests();
   const firstName = session.user.name?.split(" ")[0] ?? "there";
   const initials =
     session.user.name
@@ -118,6 +99,17 @@ const maintenanceItems = await listEquipment();
     day: "numeric",
     year: "numeric",
   }).format(new Date());
+
+  const getDueDateColor = (nextCalibrationDueAt: Date) => {
+    const now = new Date();
+    const diffInDays = Math.ceil(
+      (nextCalibrationDueAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffInDays <= 0) return "text-red-600"; // Due today or overdue
+    if (diffInDays <= 7) return "text-amber-600"; // Due in 1-3 days
+    return "text-emerald-600"; // Due later
+  };
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -229,9 +221,9 @@ const maintenanceItems = await listEquipment();
                       <tr>
                         <th className="px-6 py-4 font-medium">Request</th>
                         <th className="px-4 py-4 font-medium">Equipment</th>
-                        <th className="px-4 py-4 font-medium">Priority</th>
-                        <th className="px-4 py-4 font-medium">Due date</th>
-                        <th className="px-6 py-4 font-medium">Tech</th>
+                        <th className="px-4 py-4 font-medium">Status</th>
+                        <th className="px-4 py-4 font-medium">Submitted</th>
+                        <th className="px-6 py-4 font-medium">Owner</th>
                       </tr>
                     </thead>
 
@@ -242,37 +234,45 @@ const maintenanceItems = await listEquipment();
                           className="border-b border-[var(--border)] last:border-0"
                         >
                           <td className="px-6 py-5">
-                            <p className="font-medium">{request.id}</p>
+                            <p className="font-medium">{request.rmaNumber}</p>
                             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                              {request.request}
+                              {request.issueDescription}
                             </p>
                           </td>
 
                           <td className="px-4 py-5">
-                            <p className="font-medium">{request.equipment}</p>
+                            <p className="font-medium">
+                              {request.equipment?.equipmentType.manufacturer}{" "}
+                              {request.equipment?.equipmentType.model}
+                            </p>
                             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                              {request.unit}
+                              {request.equipment?.clinicAssetTag ??
+                                request.equipment?.serialNumber ??
+                                "No linked equipment"}
                             </p>
                           </td>
 
                           <td className="px-4 py-5">
                             <span
-                              className={`rounded-full px-3 py-1 text-xs font-medium ${request.priorityClass}`}
+                              className={`rounded-full px-3 py-1 text-xs font-medium ${getRequestStatusClass(request.status)}`}
                             >
-                              {request.priority}
+                              {request.status.replaceAll("_", " ")}
                             </span>
                           </td>
 
                           <td className="px-4 py-5">
-                            <p className="font-medium">{request.due}</p>
-                            <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-                              {request.dueHint}
+                            <p className="font-medium">
+                              {request.submittedAt.toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
                             </p>
                           </td>
 
                           <td className="px-6 py-5">
                             <span className="grid h-9 w-9 place-items-center rounded-full bg-[var(--secondary)] text-xs font-medium text-[var(--secondary-foreground)]">
-                              {request.tech}
+                              {getInitials(request.currentCustodianUser?.name)}
                             </span>
                           </td>
                         </tr>
@@ -334,8 +334,12 @@ const maintenanceItems = await listEquipment();
                           key={id}
                           className="flex justify-between gap-4 text-sm"
                         >
-                          <span>{serialNumber}</span>
-                          <span className="whitespace-nowrap font-medium text-[var(--out-of-service)]">
+                          <Link href={`/equipment/${serialNumber}`}>
+                            {serialNumber}
+                          </Link>
+                          <span
+                            className={`whitespace-nowrap font-medium ${nextCalibrationDueAt && getDueDateColor(nextCalibrationDueAt)}`}
+                          >
                             {nextCalibrationDueAt?.toLocaleDateString("en-US", {
                               month: "short",
                               day: "numeric",
