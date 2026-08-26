@@ -1,0 +1,540 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/prisma/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  TECHNICIAN
+  SUPERVISOR
+  SYSTEM_ADMIN
+}
+
+model Clinic {
+  id   String @id @default(cuid())
+  name String
+  code String @unique
+
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String
+  postalCode   String
+  country      String  @default("US")
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts        ClinicContact[]
+  equipment       Equipment[]
+  serviceRequests ServiceRequest[]
+  shipments       Shipment[]
+}
+
+model ClinicContact {
+  id       String @id @default(cuid())
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  name     String
+  email    String  @unique
+  phone    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests ServiceRequest[]
+}
+
+model User {
+  id                       String           @id @default(cuid())
+  entraSubject             String           @unique
+  email                    String           @unique
+  name                     String?
+  role                     UserRole         @default(TECHNICIAN)
+  initiatedServiceRequests ServiceRequest[] @relation("UserInitiatedServiceRequests")
+  performedCalibrations    Calibration[]
+  performedCustodyEvents   CustodyEvent[]   @relation("CustodyEventPerformedBy")
+
+  custodyEventsAsCustodian CustodyEvent[] @relation("CustodyEventCustodian")
+
+  currentCustodyServiceRequests ServiceRequest[] @relation("CurrentServiceRequestCustodian")
+
+  changedStatusEntries StatusHistory[]
+
+  serviceRequestStatusChanges ServiceRequestStatusHistory[]
+  equipmentStatusChanges      EquipmentStatusHistory[]
+
+  performedInspections Inspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EquipmentType {
+  id                             String  @id @default(cuid())
+  manufacturer                   String
+  model                          String
+  category                       String
+  defaultCalibrationIntervalDays Int?
+  isActive                       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  equipment               Equipment[]
+  calibrationRequirements CalibrationRequirement[]
+
+  inspectionRequirements InspectionRequirement[]
+
+  @@unique([manufacturer, model])
+}
+
+enum ReadinessStatus {
+  READY
+  IN_USE
+  MAINTENANCE_DUE
+  OUT_OF_SERVICE
+}
+
+model Equipment {
+  id String @id @default(cuid())
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  equipmentTypeId String
+  equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+
+  serialNumber   String  @unique
+  clinicAssetTag String?
+  isActive       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  readinessStatus ReadinessStatus          @default(READY)
+  statusHistory   EquipmentStatusHistory[]
+
+  serviceRequests      ServiceRequest[]
+  calibrations         Calibration[]
+  lastCalibratedAt     DateTime?
+  nextCalibrationDueAt DateTime?
+
+  inspections Inspection[]
+
+  @@unique([clinicId, clinicAssetTag])
+}
+
+enum CalibrationResult {
+  PASSED
+  FAILED
+}
+
+model Calibration {
+  id String @id @default(cuid())
+
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+
+  serviceRequestId String?
+  serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+
+  performedById String
+  performedBy   User   @relation(fields: [performedById], references: [id])
+
+  performedAt       DateTime
+  result            CalibrationResult
+  notes             String?
+  certificateNumber String?                  @unique
+  measurements      CalibrationMeasurement[]
+
+  createdAt DateTime @default(now())
+}
+
+model CalibrationRequirement {
+  id String @id @default(cuid())
+
+  equipmentTypeId String
+  equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+
+  name         String
+  unit         String
+  targetValue  Decimal? @db.Decimal(12, 3)
+  minimumValue Decimal? @db.Decimal(12, 3)
+  maximumValue Decimal? @db.Decimal(12, 3)
+  sortOrder    Int      @default(0)
+  isRequired   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  measurements CalibrationMeasurement[]
+
+  @@unique([equipmentTypeId, name])
+}
+
+enum MeasurementResult {
+  PASSED
+  FAILED
+}
+
+model CalibrationMeasurement {
+  id String @id @default(cuid())
+
+  calibrationId String
+  calibration   Calibration @relation(fields: [calibrationId], references: [id])
+
+  requirementId String
+  requirement   CalibrationRequirement @relation(fields: [requirementId], references: [id])
+
+  targetValue   Decimal?          @db.Decimal(12, 3)
+  measuredValue Decimal           @db.Decimal(12, 3)
+  result        MeasurementResult
+
+  // Snapshot of the requirements at the time of this calibration
+  testName     String
+  unit         String
+  minimumValue Decimal? @db.Decimal(12, 3)
+  maximumValue Decimal? @db.Decimal(12, 3)
+
+  createdAt DateTime @default(now())
+}
+
+enum ServiceRequestOrigin {
+  CLINIC_CONTACT
+  CLEARTRACK_USER
+  SYSTEM
+}
+
+enum ServiceRequestReason {
+  CUSTOMER_REPAIR_REQUEST
+  FAILED_CALIBRATION
+  EOL_UPDATE
+  PREVENTIVE_MAINTENANCE
+  INSPECTION_FAILURE
+  OTHER
+}
+
+enum ServiceRequestStatus {
+  AWAITING_SHIPMENT
+  RECEIVED
+  IN_REPAIR
+  AWAITING_QA
+  READY_TO_SHIP
+  SHIPPED
+  ON_HOLD
+  CLOSED
+  CANCELLED
+}
+
+model ServiceRequest {
+  id        String @id @default(cuid())
+  rmaNumber String @unique
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  clinicContactId String?
+  clinicContact   ClinicContact? @relation(fields: [clinicContactId], references: [id])
+
+  initiatedByUserId String?
+  initiatedByUser   User?   @relation("UserInitiatedServiceRequests", fields: [initiatedByUserId], references: [id])
+
+  currentLocation      StorageLocation? @relation("CurrentServiceRequestLocation", fields: [currentLocationId], references: [id])
+  currentCustodianUser User?            @relation("CurrentServiceRequestCustodian", fields: [currentCustodianUserId], references: [id])
+
+  origin        ServiceRequestOrigin
+  reason        ServiceRequestReason
+  reasonDetails String?
+
+  equipmentId String?
+  equipment   Equipment? @relation(fields: [equipmentId], references: [id])
+
+  currentLocationId      String?
+  currentCustodianUserId String?
+
+  statusHistory ServiceRequestStatusHistory[]
+
+  reportedSerialNumber String
+  reportedAssetTag     String?
+  issueDescription     String
+
+  status      ServiceRequestStatus @default(AWAITING_SHIPMENT)
+  submittedAt DateTime             @default(now())
+  receivedAt  DateTime?
+  closedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  custodyEvents   CustodyEvent[]
+  shipmentItems   ShipmentItem[]
+  inspections     Inspection[]
+  calibrations    Calibration[]
+  statusHistories StatusHistory[]
+
+  @@index([clinicId, status])
+  @@index([status, submittedAt])
+  @@index([reportedSerialNumber])
+}
+
+enum ShipmentDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum ShipmentStatus {
+  EXPECTED
+  IN_TRANSIT
+  DELIVERED
+  EXCEPTION
+  CANCELLED
+}
+
+model Shipment {
+  id String @id @default(cuid())
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  direction ShipmentDirection
+  status    ShipmentStatus    @default(EXPECTED)
+
+  carrier        String?
+  trackingNumber String?
+  shippedAt      DateTime?
+  deliveredAt    DateTime?
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items         ShipmentItem[]
+  custodyEvents CustodyEvent[]
+
+  @@unique([carrier, trackingNumber])
+  @@index([clinicId, direction, status])
+}
+
+model ShipmentItem {
+  id String @id @default(cuid())
+
+  shipmentId String
+  shipment   Shipment @relation(fields: [shipmentId], references: [id])
+
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([shipmentId, serviceRequestId])
+  @@index([serviceRequestId])
+}
+
+enum StorageLocationType {
+  RECEIVING
+  REPAIR_QUEUE
+  REPAIR_BENCH
+  QA_STATION
+  SHIPPING_RACK
+  QUARANTINE
+}
+
+model StorageLocation {
+  id       String              @id @default(cuid())
+  code     String              @unique
+  name     String
+  type     StorageLocationType
+  isActive Boolean             @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventsFrom CustodyEvent[] @relation("CustodyEventFromLocation")
+  eventsTo   CustodyEvent[] @relation("CustodyEventToLocation")
+
+  currentServiceRequests ServiceRequest[] @relation("CurrentServiceRequestLocation")
+}
+
+enum CustodyEventType {
+  RECEIVED_AT_WAREHOUSE
+  MOVED
+  CHECKED_OUT_FOR_SERVICE
+  CHECKED_IN_FROM_SERVICE
+  STAGED_FOR_SHIPMENT
+  RELEASED_TO_CARRIER
+}
+
+model CustodyEvent {
+  id String @id @default(cuid())
+
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  shipmentId String?
+  shipment   Shipment? @relation(fields: [shipmentId], references: [id])
+
+  fromLocationId String?
+  fromLocation   StorageLocation? @relation("CustodyEventFromLocation", fields: [fromLocationId], references: [id])
+
+  toLocationId String?
+  toLocation   StorageLocation? @relation("CustodyEventToLocation", fields: [toLocationId], references: [id])
+
+  performedById String
+  performedBy   User   @relation("CustodyEventPerformedBy", fields: [performedById], references: [id])
+
+  custodianUserId String?
+  custodianUser   User?   @relation("CustodyEventCustodian", fields: [custodianUserId], references: [id])
+
+  eventType  CustodyEventType
+  occurredAt DateTime         @default(now())
+  notes      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([serviceRequestId, occurredAt])
+  @@index([shipmentId])
+  @@index([toLocationId])
+}
+
+model StatusHistory {
+  id String @id @default(cuid())
+
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  fromStatus ServiceRequestStatus?
+  toStatus   ServiceRequestStatus
+
+  changedByUserId String?
+  changedByUser   User?   @relation(fields: [changedByUserId], references: [id])
+
+  notes     String?
+  changedAt DateTime @default(now())
+
+  @@index([serviceRequestId, changedAt])
+}
+
+enum InspectionType {
+  INTAKE
+  POST_REPAIR
+  FINAL_QA
+}
+
+enum InspectionOutcome {
+  PASSED
+  FAILED
+}
+
+enum InspectionCheckResult {
+  PASSED
+  FAILED
+  NOT_APPLICABLE
+}
+
+model InspectionRequirement {
+  id String @id @default(cuid())
+
+  equipmentTypeId String
+  equipmentType   EquipmentType @relation(fields: [equipmentTypeId], references: [id])
+
+  inspectionType InspectionType
+  name           String
+  description    String?
+  sortOrder      Int            @default(0)
+  isRequired     Boolean        @default(true)
+  isActive       Boolean        @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checks InspectionCheck[]
+
+  @@unique([equipmentTypeId, inspectionType, name])
+}
+
+model Inspection {
+  id String @id @default(cuid())
+
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+
+  inspectionType InspectionType
+  outcome        InspectionOutcome
+
+  performedById String
+  performedBy   User   @relation(fields: [performedById], references: [id])
+
+  performedAt DateTime @default(now())
+  notes       String?
+
+  createdAt DateTime @default(now())
+
+  checks InspectionCheck[]
+
+  @@index([serviceRequestId, performedAt])
+  @@index([equipmentId, performedAt])
+}
+
+model InspectionCheck {
+  id String @id @default(cuid())
+
+  inspectionId String
+  inspection   Inspection @relation(fields: [inspectionId], references: [id])
+
+  requirementId String
+  requirement   InspectionRequirement @relation(fields: [requirementId], references: [id])
+
+  requirementName String
+  result          InspectionCheckResult
+  notes           String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([inspectionId, requirementId])
+}
+
+model ServiceRequestStatusHistory {
+  id String @id @default(cuid())
+
+  serviceRequestId String
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+
+  fromStatus ServiceRequestStatus?
+  toStatus   ServiceRequestStatus
+
+  changedByUserId String?
+  changedByUser   User?   @relation(fields: [changedByUserId], references: [id])
+
+  notes     String?
+  changedAt DateTime @default(now())
+
+  @@index([serviceRequestId, changedAt])
+}
+
+model EquipmentStatusHistory {
+  id String @id @default(cuid())
+
+  equipmentId String
+  equipment   Equipment @relation(fields: [equipmentId], references: [id])
+
+  fromStatus ReadinessStatus?
+  toStatus   ReadinessStatus
+
+  changedByUserId String?
+  changedByUser   User?   @relation(fields: [changedByUserId], references: [id])
+
+  notes     String?
+  changedAt DateTime @default(now())
+
+  @@index([equipmentId, changedAt])
+}
