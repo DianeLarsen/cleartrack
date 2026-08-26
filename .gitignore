@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local agent and editor files
+.agents/
+.claude/
+.neon/
+.vscode/
+.windsurf/
+skills-lock.json
+
+# Generated Prisma client
+/src/prisma/generated/
+
+.neon
+/generated/

@@ -1,36 +1,122 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Clinic’s equipment system
+  “We own device DEF-1042 and its normal location is ER Bay 3.”
 
-## Getting Started
+                ↓ device arrives for service
 
-First, run the development server:
+ClearTrack database
+  “DEF-1042, owned by Evergreen Clinic,
+   received Aug 24, inspected by Diane,
+   awaiting parts, currently in our warehouse.”
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+   A secure link is passwordless login for one narrowly defined action. The clinic contact does not create a username/password or access your internal app—but they do prove they control the approved email inbox.
+
+There is no way for an external clinic to create trusted requests without some form of identity verification. Otherwise, it is just an internet form with a nicer hat.
+
+A secure link is **passwordless login for one narrowly defined action**. The clinic contact does not create a username/password or access your internal app—but they do prove they control the approved email inbox.
+
+The flow would be:
+
+1. A ClearTrack admin adds an approved clinic contact: `biomed@evergreenclinic.org`.
+2. ClearTrack emails that address a unique request link.
+3. The contact clicks it and opens the service-request form.
+4. The server knows, from the link, that this request is for **Evergreen Clinic**.
+5. They submit it; ClearTrack generates `CT-2026-000123`.
+6. The link expires or is consumed, so it cannot be reused.
+
+Technically, the URL contains a long, random one-time token. The database stores only a hash of it, associates it with the clinic/contact, makes it expire—say in 24 hours—and marks it used after submission. Same security idea as a password-reset link.
+
+So: do they “log in”?
+
+* **In a practical sense:** yes, by proving control of their email inbox.
+* **In the user experience:** no password, account setup, or dashboard; they click a link and submit one ticket.
+* **In your Microsoft SSO model:** absolutely unaffected. Microsoft Entra remains worker-only.
+
+If you eventually want clinics to log in anytime, view old requests, download documents, etc., then they need a real external portal account. It could use email magic links rather than passwords, but it is still a separate customer-auth system alongside worker Entra SSO.
+
+For this project, I’d use the one-time request link. It demonstrates controlled external intake without ballooning ClearTrack into a customer identity-management project.
+
+Next.js — the web application framework (App Router).
+TypeScript — safer JavaScript and better tooling.
+React — UI components underneath Next.js.
+Tailwind CSS — styling and responsive layout.
+shadcn/ui + Radix UI — accessible UI building blocks when we need them.
+Recharts — dashboard charts, including the equipment-status donut chart.
+Auth.js / NextAuth — authentication integration in the app.
+Microsoft Entra ID — staff single sign-on and identity provider.
+Neon PostgreSQL — hosted production database.
+Prisma — database schema, migrations, queries, and type-safe database access.
+@prisma/adapter-neon — lets Prisma connect cleanly to Neon’s serverless Postgres setup.
+Vercel (planned) — deployment and hosting for the Next.js app.
+GitHub + GitHub Actions (planned) — source control, pull requests, and eventually CI checks.
+Nice-to-have pieces we decided on, but have not built yet:
+
+Resend or similar — secure request/service-link emails for clinic contacts.
+Cloudinary or Vercel Blob — only if we later decide calibration certificates or service photos need stored files. Right now, we are deliberately storing certificate details, not files. Paper is apparently still allowed to exist.
+
+Next.js, TypeScript, React, Tailwind, shadcn/ui/Radix, Recharts, Auth.js, Microsoft Entra ID, Neon PostgreSQL, Prisma, Cloudinary, Resend, React Email, Vercel, and GitHub Actions.
+
+Future Me:
+ClearTrack and TestLog Triage should connect through an API—not by sharing a database directly. Shared databases turn two clean projects into one tangled organism with a future support ticket already brewing.
+
+The setup:
+
+```mermaid
+flowchart LR
+  Device["Test-log CSV"] --> Triage["TestLog Triage\nPython CLI/API"]
+  Triage --> Findings["Failure summary\nand reliability signals"]
+  Findings --> API["ClearTrack API route"]
+  API --> Database["Neon PostgreSQL"]
+  Database --> Dashboard["ClearTrack dashboard"]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+TestLog Triage’s job is to read test logs and turn them into useful findings:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+* Device serial number or internal device ID
+* Test date/time
+* Total checks, passed checks, failed checks
+* Error-code counts
+* Overall result
+* Flagged reliability concern, if applicable
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+ClearTrack’s job is to receive those findings, attach them to the correct equipment record, and make them actionable:
 
-## Learn More
+* Show recent test failures on the equipment detail page.
+* Flag a device as needing inspection or service review.
+* Create a service-request draft for a technician to review.
+* Show recurring error codes across units on the dashboard.
+* Preserve the imported result as part of the equipment quality history.
 
-To learn more about Next.js, take a look at the following resources:
+The actual connection would be a protected endpoint in ClearTrack, something like:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+POST /api/integrations/testlog-triage/results
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+TestLog Triage sends JSON such as:
 
-## Deploy on Vercel
+```json
+{
+  "source": "testlog-triage",
+  "externalRunId": "run_2026_08_25_001",
+  "deviceSerialNumber": "DEFIB-204",
+  "testedAt": "2026-08-25T16:30:00Z",
+  "totalChecks": 8,
+  "passedChecks": 5,
+  "failedChecks": 3,
+  "errorCodeCounts": {
+    "ECG_LEAD_DISCONNECT": 2,
+    "CHARGE_TIMEOUT": 1
+  },
+  "overallResult": "FAIL"
+}
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+ClearTrack validates a secret API key, finds `DEFIB-204`, and creates records such as:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* `TestRun`
+* `TestFailure` or `TestFinding`
+* optionally a `ServiceRequest` in `Needs review` status
+
+Important design rule: **do not let a Python analysis automatically mark a real defibrillator out of service.** It can flag and recommend; a qualified human reviews and changes the readiness state. That distinction makes the project more credible—and much less terrifying in an interview.
+
+It analyzes the CSV, then posts the summary to ClearTrack. Later, if you want a polished demo, we can add a drag-and-drop upload page inside ClearTrack that passes the file to the Python analyzer through a small service.
