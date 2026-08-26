@@ -120,3 +120,37 @@ ClearTrack validates a secret API key, finds `DEFIB-204`, and creates records su
 Important design rule: **do not let a Python analysis automatically mark a real defibrillator out of service.** It can flag and recommend; a qualified human reviews and changes the readiness state. That distinction makes the project more credible—and much less terrifying in an interview.
 
 It analyzes the CSV, then posts the summary to ClearTrack. Later, if you want a polished demo, we can add a drag-and-drop upload page inside ClearTrack that passes the file to the Python analyzer through a small service.
+
+
+flowchart TD
+    A["Device received"] --> B["Create inbound custody event"]
+    B --> C{"Why is it here?"}
+
+    C -->|"Reported fault / RMA"| D["Create Service Request"]
+    C -->|"Scheduled calibration"| E["Create calibration work"]
+    C -->|"Routine inspection"| F["Create inspection work"]
+    C -->|"Transfer / return"| G["Intake assessment"]
+
+    D --> G
+    E --> G
+    F --> H["Perform inspection"]
+    G --> I{"Repair needed?"}
+
+    I -->|"Yes"| J["Repair work + parts/notes"]
+    I -->|"No"| K{"Calibration due or required?"}
+    J --> K
+
+    K -->|"Yes"| L["Calibrate and record measurements"]
+    K -->|"No"| M["Final functional inspection"]
+    L --> M
+    H --> N{"Inspection passed?"}
+    N -->|"No"| D
+    N -->|"Yes"| O["Ready for shipment"]
+
+    M --> P{"Final inspection passed?"}
+    P -->|"No"| D
+    P -->|"Yes"| O
+
+    O --> Q["Resolve Service Request, if one exists"]
+    Q --> R["Create outbound custody event"]
+    R --> S["Ship device"]

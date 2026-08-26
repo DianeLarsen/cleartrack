@@ -65,8 +65,6 @@ model User {
 
   currentCustodyServiceRequests ServiceRequest[] @relation("CurrentServiceRequestCustodian")
 
-  changedStatusEntries StatusHistory[]
-
   serviceRequestStatusChanges ServiceRequestStatusHistory[]
   equipmentStatusChanges      EquipmentStatusHistory[]
 
@@ -87,7 +85,9 @@ model EquipmentType {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  equipment               Equipment[]
+  equipment Equipment[]
+
+  requiresCalibration     Boolean                  @default(false)
   calibrationRequirements CalibrationRequirement[]
 
   inspectionRequirements InspectionRequirement[]
@@ -273,11 +273,10 @@ model ServiceRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  custodyEvents   CustodyEvent[]
-  shipmentItems   ShipmentItem[]
-  inspections     Inspection[]
-  calibrations    Calibration[]
-  statusHistories StatusHistory[]
+  custodyEvents CustodyEvent[]
+  shipmentItems ShipmentItem[]
+  inspections   Inspection[]
+  calibrations  Calibration[]
 
   @@index([clinicId, status])
   @@index([status, submittedAt])
@@ -403,28 +402,10 @@ model CustodyEvent {
   @@index([toLocationId])
 }
 
-model StatusHistory {
-  id String @id @default(cuid())
-
-  serviceRequestId String
-  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
-
-  fromStatus ServiceRequestStatus?
-  toStatus   ServiceRequestStatus
-
-  changedByUserId String?
-  changedByUser   User?   @relation(fields: [changedByUserId], references: [id])
-
-  notes     String?
-  changedAt DateTime @default(now())
-
-  @@index([serviceRequestId, changedAt])
-}
-
 enum InspectionType {
-  INTAKE
-  POST_REPAIR
-  FINAL_QA
+  DIAGNOSTIC
+  ROUTINE
+  FINAL_RELEASE
 }
 
 enum InspectionOutcome {
@@ -462,8 +443,8 @@ model InspectionRequirement {
 model Inspection {
   id String @id @default(cuid())
 
-  serviceRequestId String
-  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  serviceRequestId String?
+  serviceRequest   ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
 
   equipmentId String
   equipment   Equipment @relation(fields: [equipmentId], references: [id])

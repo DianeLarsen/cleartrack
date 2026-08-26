@@ -13,7 +13,6 @@ export async function updateReadinessStatus(
   });
 }
 
-export async function recordInspection() {
-}
+export async function recordInspection() {}
 
 export async function createEquipment() {}
