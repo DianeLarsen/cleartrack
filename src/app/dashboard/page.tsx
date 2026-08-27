@@ -128,10 +128,13 @@ export default async function DashboardPage() {
               Dashboard
             </a>
 
-            <span className="flex items-center gap-4 rounded-md px-4 py-3 text-sm text-[var(--sidebar-muted)]">
+            <Link
+              href="/equipment"
+              className="flex items-center gap-4 rounded-md px-4 py-3 text-sm text-[var(--sidebar-muted)] hover:bg-white/10 hover:text-white"
+            >
               <Monitor className="h-5 w-5" />
               Equipment
-            </span>
+            </Link>
 
             <span className="flex items-center gap-4 rounded-md px-4 py-3 text-sm text-[var(--sidebar-muted)]">
               <ClipboardList className="h-5 w-5" />

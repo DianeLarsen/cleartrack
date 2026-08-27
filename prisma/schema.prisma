@@ -97,7 +97,6 @@ model EquipmentType {
 
 enum ReadinessStatus {
   READY
-  IN_USE
   MAINTENANCE_DUE
   OUT_OF_SERVICE
 }

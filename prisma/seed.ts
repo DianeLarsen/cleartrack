@@ -14,7 +14,6 @@ const prisma = new PrismaClient({
 type DeviceKind = "monitor" | "aed";
 type ReadinessStatus =
   | "READY"
-  | "IN_USE"
   | "MAINTENANCE_DUE"
   | "OUT_OF_SERVICE";
 
@@ -347,7 +346,7 @@ async function main() {
       serialNumber: "PSP-CV-1004",
       clinicAssetTag: "CV-DEF-004",
       deviceKind: "monitor",
-      readinessStatus: "IN_USE",
+      readinessStatus: "READY",
       lastCalibratedDaysAgo: 120,
       nextCalibrationDueInDays: 245,
     },
@@ -379,7 +378,7 @@ async function main() {
       serialNumber: "PSA-CV-2003",
       clinicAssetTag: "CV-AED-003",
       deviceKind: "aed",
-      readinessStatus: "IN_USE",
+      readinessStatus: "READY",
     },
     {
       clinicCode: "CASCADE-001",
@@ -437,7 +436,7 @@ async function main() {
       serialNumber: "PSP-NS-1005",
       clinicAssetTag: "NS-DEF-005",
       deviceKind: "monitor",
-      readinessStatus: "IN_USE",
+      readinessStatus: "READY",
       lastCalibratedDaysAgo: 135,
       nextCalibrationDueInDays: 230,
     },
@@ -532,7 +531,7 @@ async function main() {
       serialNumber: "PSA-PC-2003",
       clinicAssetTag: "PC-AED-003",
       deviceKind: "aed",
-      readinessStatus: "IN_USE",
+      readinessStatus: "READY",
     },
     {
       clinicCode: "PINECREST-001",
